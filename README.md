@@ -61,7 +61,7 @@ Every fix is on by default. See [Turning a fix off](#turning-a-fix-off) for the 
 1. Close Conan Exiles.
 2. In Steam, right-click Conan Exiles → **Manage** → **Browse local files**, then open `ConanSandbox\Binaries\Win64`.
 3. If there is already an `xinput1_3.dll` there (from another mod or tool), rename it to `xinput1_3.dll.bak` first, so you can put it back later.
-4. Copy `xinput1_3.dll` into that folder, next to `ConanSandbox.exe`.
+4. Download `xinput1_3.dll` from the [latest release](https://github.com/ByVassilios/conan-unchained/releases/latest) and copy it into that folder, next to `ConanSandbox.exe`.
 5. Launch the game as usual.
 
 > [!TIP]
