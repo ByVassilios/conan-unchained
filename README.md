@@ -89,6 +89,8 @@ If a join gets stuck or something looks wrong, try `nopak` first, then the other
 
 ## Troubleshooting
 
+The quickest check is the bottom-right corner of the main menu. Above the game's revision line it shows `[CONAN UNCHAINED]` and one line per fix: `Loaded`, `Disabled` (switch file), `Failed to load` (your game version differs), or `Turned off by safety check`. The `nomenu` switch turns this off.
+
 After launching, open `unchained\log.txt` in `ConanSandbox\Binaries\Win64`. Near the top you should see lines like:
 
 ```
@@ -189,6 +191,7 @@ gcc -shared -O2 -s -Wall -Wno-cast-function-type -o xinput1_3.dll src\*.c xinput
 | `src/join_fix.c` | 7. Stuck loading screen fixes |
 | `src/building_items.c` | 8. Building piece shortcut |
 | `src/asset_compare.c` | 9. Item list check shortcut |
+| `src/menu_status.c` | Fix status in the menu's bottom-right corner |
 | `src/load_log.c` | Diagnostic load logger (off unless `unchained\loadlog` exists) |
 | `src/xinput.c` | Passes controller calls on to Windows' own `xinput1_3.dll` |
 | `tests/test.c` | Self-test, with fake versions of the game functions |

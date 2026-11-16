@@ -12,6 +12,7 @@
 #include "../src/folder_lists.c"
 #include "../src/registry_cache.c"
 #include "../src/load_log.c"
+#include "../src/menu_status.c"
 #include <assert.h>
 static int fake_hash_calls;
 static FMD5Hash *fake_hash_file(FMD5Hash *out, const wchar_t *name, void *b) { (void)name; (void)b; fake_hash_calls++; out->valid = 1; memset(out->bytes, fake_hash_calls, 16); return out; }
@@ -305,5 +306,31 @@ int main(void) {
       read_server_slot(ini, slot, 64); assert(!wcscmp(slot, L"singleplayer"));
       DeleteFileW(ini); read_server_slot(ini, slot, 64); assert(!wcscmp(slot, L"unknown")); }
 
+    // Menu status: only the revision string is rewritten; states and the buffer limit hold.
+    { static void *seen; static wchar_t got[4096];
+      void *fake_s2t(void *o, const FString *in, void *x, void *y) { (void)o; (void)x; (void)y; seen = (void *)in; wcscpy(got, in->data); return o; }
+      original_str_to_text = fake_s2t;
+      // Fake name table: index 7 = W_IngameMenu_C, index 9 = W_MainMenu_MainMenu_C (same bucket, chained).
+      static void *heads[65536]; static char e1[64], e2[64]; name_heads = heads; heads[123] = e1;
+      *(int *)e1 = 7 << 1; strcpy(e1 + 0x10, "W_IngameMenu_C"); *(char **)(e1 + 8) = e2;
+      *(int *)e2 = 9 << 1; strcpy(e2 + 0x10, "W_MainMenu_MainMenu_C");
+      static char mainCls[0x20], gameCls[0x20], mainObj[0x20], gameObj[0x20], mainFrame[0x20], gameFrame[0x20];
+      *(int *)(mainCls + 0x18) = 9; *(int *)(gameCls + 0x18) = 7;
+      *(char **)(mainObj + 0x10) = mainCls; *(char **)(gameObj + 0x10) = gameCls;
+      *(char **)(mainFrame + 0x18) = mainObj; *(char **)(gameFrame + 0x18) = gameObj;
+      wchar_t other[] = L"Revision"; FString o = {other, 9, 9}; str_to_text_hook(NULL, &o, NULL, mainFrame);
+      assert(seen == &o);                                                        // other strings pass straight through
+      for (int i = 0; i < FIX_COUNT; i++) fixes[i].state = 1;
+      fixes[0].state = 0; fixes[1].state = 2; pak_skip_disabled = 1;
+      wchar_t rev[] = L"Revision (#1/2) | Backend live (3)"; FString r = {rev, (int)wcslen(rev) + 1, 0};
+      str_to_text_hook(NULL, &r, NULL, gameFrame); assert(seen == &r);          // in-game menu: unchanged
+      str_to_text_hook(NULL, &r, NULL, NULL); assert(seen == &r);               // no frame: unchanged
+      str_to_text_hook(NULL, &r, NULL, mainFrame); assert(main_menu_name == 9);
+      assert(seen != &r && !wcsncmp(got, L"[CONAN UNCHAINED]\n", 18));
+      assert(wcsstr(got, L"Pak mount sleeps: Disabled\n") && wcsstr(got, L"Not Responding fix: Failed to load\n"));
+      assert(wcsstr(got, L"Pak search skip: Turned off by safety check\n") && wcsstr(got, L"Occlusion hash: Loaded\n"));
+      size_t g = wcslen(got), rl = wcslen(rev); assert(g > rl && !wcscmp(got + g - rl, rev) && !wcsncmp(got + g - rl - 2, L"\n\n", 2));   // game text at the bottom, after a blank line
+      wchar_t small[40]; assert(menu_text(small, 40, rev) == 39 && wcslen(small) == 39);   // truncates, never overflows
+      pak_skip_disabled = 0; }
     puts("ok"); return 0;
 }

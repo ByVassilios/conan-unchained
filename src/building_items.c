@@ -17,7 +17,7 @@ typedef void (*Free_t)(void *p);
 static HasItem_t original_has_item; static FindItem_t original_find_item; static Resolve_t original_resolve; static RefFromObj_t game_path_of_object; static Free_t game_free;
 static DWORD item_thread, item_main_thread; static FString item_class_path; static int item_shortcut_active;
 static struct { unsigned char *row; unsigned char saved[16]; } *skipped_rows; static int skipped_count, skipped_capacity;
-static volatile LONG64 item_lookups, item_rows_skipped; static volatile LONG item_shortcut_disabled;
+static volatile LONG64 item_lookups, item_rows_skipped; volatile LONG item_shortcut_disabled;
 #define HASITEM_RVA 0x625470
 #define HASITEM_CALL 0x625626   // call 0x167C220 inside HasBuildingItem
 #define FINDITEM_RVA 0x61A2C0
@@ -104,7 +104,7 @@ static void point_call(unsigned char *call, unsigned char *cave) {
 }
 
 /* Hooks HasBuildingItem and FindBuildingItem and routes their lookup calls through resolve_filter. */
-void install_building_items(void) {
+int install_building_items(void) {
     unsigned char *base = (unsigned char *)GetModuleHandleW(NULL);
     unsigned char *p = find_signature(HASITEM_SIG, sizeof HASITEM_SIG / sizeof HASITEM_SIG[0], HASITEM_RVA);
     static const unsigned char eq[] = {0x48,0x83,0xec,0x28, 0x83,0x7a,0x08,0x00, 0x48,0x8b,0xc1};
@@ -114,21 +114,22 @@ void install_building_items(void) {
     if (p != base + HASITEM_RVA || memcmp(base + STREQ_RVA, eq, sizeof eq) || memcmp(base + RESOLVE_RVA, res, sizeof res) ||
         memcmp(base + REFFROMOBJ_RVA, ref, sizeof ref) || memcmp(base + FINDITEM_RVA, FINDITEM_SIG, sizeof FINDITEM_SIG) ||
         !calls_resolve(base, base + HASITEM_CALL) || !calls_resolve(base, base + FINDITEM_CALL)) {
-        log_line("building item shortcut: game build differs - left off.\n"); return;
+        log_line("building item shortcut: game build differs - left off.\n"); return 0;
     }
     // The calls are rel32, so they need a jump stub within 2 GB: 16 bytes of int3 padding inside .text.
     unsigned char *cave = NULL;
     for (unsigned char *q = base + 0x1000; q < base + 0x3000000 && !cave; q++)
         if (*(unsigned long long *)q == 0xCCCCCCCCCCCCCCCCull && *(unsigned long long *)(q + 8) == 0xCCCCCCCCCCCCCCCCull && q[-1] == 0xCC) cave = q;
-    if (!cave) { log_line("building item shortcut: no stub space - left off.\n"); return; }
+    if (!cave) { log_line("building item shortcut: no stub space - left off.\n"); return 0; }
     game_path_equals = (PathEquals_t)(base + STREQ_RVA); original_resolve = (Resolve_t)(base + RESOLVE_RVA);
     game_path_of_object = (RefFromObj_t)(base + REFFROMOBJ_RVA); game_free = (Free_t)(base + FREE_RVA);
     item_main_thread = GetCurrentThreadId();   // DllMain runs on the game's main thread
-    if (!(original_has_item = (HasItem_t)hook_function(p, 15, (void *)has_item_hook))) return;
-    if (!(original_find_item = (FindItem_t)hook_function(base + FINDITEM_RVA, 17, (void *)find_item_hook))) return;
+    if (!(original_has_item = (HasItem_t)hook_function(p, 15, (void *)has_item_hook))) return 0;
+    if (!(original_find_item = (FindItem_t)hook_function(base + FINDITEM_RVA, 17, (void *)find_item_hook))) return 0;
     DWORD old; unsigned char jmp[14] = {0xFF, 0x25, 0, 0, 0, 0}; void *dst = (void *)resolve_filter; memcpy(jmp + 6, &dst, 8);
     VirtualProtect(cave, 14, PAGE_EXECUTE_READWRITE, &old); memcpy(cave, jmp, 14); VirtualProtect(cave, 14, old, &old);
     point_call(base + HASITEM_CALL, cave); point_call(base + FINDITEM_CALL, cave);
     FlushInstructionCache(GetCurrentProcess(), base, 0x3000000);
     log_line("building item shortcut installed (has + find)\n");
+    return 1;
 }

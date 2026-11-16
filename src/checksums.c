@@ -75,7 +75,7 @@ static void append_checksum(const wchar_t *path, unsigned long long size, unsign
 // asks for that file, the hook waits for the worker's result instead of hashing it again.
 typedef struct { wchar_t path[MAX_PATH]; unsigned long long size, mtime; FMD5Hash h; volatile LONG state; } PrehashJob;   // state: 0 queued, 1 running, 2 done, 3 failed
 static PrehashJob *prehash_jobs; static int prehash_count; static volatile LONG prehash_next;
-static int prehash_disabled, prehash_verified;
+static int prehash_verified; volatile LONG prehash_disabled;
 #define PREHASH_THREADS 8
 #define PREHASH_VERIFY_MAX (64ull << 20)   // the first prehashed file under 64 MB is re-hashed by the game to compare
 
@@ -218,12 +218,19 @@ unsigned long long checksums_fingerprint(void) {
 }
 
 /* Hooks FMD5Hash::HashFile (found by signature if the game moved it). */
-void install_checksum_cache(void) {
+int install_checksum_cache(void) {
     unsigned char *target = find_signature(HASHFILE_SIG, HASHFILE_SIG_LEN, HASHFILE_RVA);
-    if (!target) { log_line("HashFile signature not found - game updated? Hook NOT installed, game runs unmodified.\n"); return; }
+    if (!target) { log_line("HashFile signature not found - game updated? Hook NOT installed, game runs unmodified.\n"); return 0; }
 
     original_hash_file = (HashFile_t)hook_function(target, HASHFILE_PROLOGUE, (void *)hash_file_hook);
-    if (!original_hash_file) return;
+    if (!original_hash_file) return 0;
     log_line("hook installed at rva 0x%llX\n", (unsigned long long)(target - (unsigned char *)GetModuleHandleW(NULL)));
-    if (!switch_on(L"noprehash")) start_prehash();
+    return 1;
+}
+
+/* Starts hashing new mods in the background; needs the checksum cache hook (-1: that one is switched off). */
+int install_prehash(void) {
+    if (!original_hash_file) return switch_on(L"nomd5") ? -1 : 0;
+    start_prehash();
+    return 1;
 }

@@ -11,7 +11,7 @@
 typedef char (*AssetIdent_t)(void *prop, const void *a, const void *b, unsigned flags);
 static AssetIdent_t original_asset_identical;
 PathEquals_t game_path_equals;
-static volatile LONG64 asset_compares, asset_shortcuts; static volatile LONG asset_shortcut_disabled;
+static volatile LONG64 asset_compares, asset_shortcuts; volatile LONG asset_shortcut_disabled;
 #define ASSET_RVA 0x16E1B50     // UAssetObjectProperty::Identical(this, A, B, PortFlags)
 #define ASSETPTR_PATH 0x10      // FStringAssetReference (one FString) inside FAssetPtr
 static const short ASSET_SIG[] = {
@@ -46,12 +46,14 @@ static char asset_identical_hook(void *prop, const void *a, const void *b, unsig
 }
 
 /* Hooks UAssetObjectProperty::Identical (exact game build only). */
-void install_asset_compare(void) {
+int install_asset_compare(void) {
     unsigned char *base = (unsigned char *)GetModuleHandleW(NULL);
     unsigned char *p = find_signature(ASSET_SIG, sizeof ASSET_SIG / sizeof ASSET_SIG[0], ASSET_RVA);
     static const unsigned char eq[] = {0x48,0x83,0xec,0x28, 0x83,0x7a,0x08,0x00, 0x48,0x8b,0xc1};
     // Calls a game function at a fixed address, so only on the exact build it was written for.
-    if (p != base + ASSET_RVA || memcmp(base + STREQ_RVA, eq, sizeof eq)) { log_line("asset compare: game build differs - left off.\n"); return; }
+    if (p != base + ASSET_RVA || memcmp(base + STREQ_RVA, eq, sizeof eq)) { log_line("asset compare: game build differs - left off.\n"); return 0; }
     game_path_equals = (PathEquals_t)(base + STREQ_RVA);
-    if ((original_asset_identical = (AssetIdent_t)hook_function(p, 18, (void *)asset_identical_hook))) log_line("asset compare shortcut installed\n");
+    if (!(original_asset_identical = (AssetIdent_t)hook_function(p, 18, (void *)asset_identical_hook))) return 0;
+    log_line("asset compare shortcut installed\n");
+    return 1;
 }

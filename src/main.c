@@ -29,6 +29,37 @@ int switch_on(const wchar_t *name) {
     return 1;
 }
 
+// Every fix in install order: off switch, name shown in the menu, install function, and the flag its
+// safety check sets if it turns itself off later. state: 0 = switched off, 1 = loaded, 2 = failed.
+typedef struct { const wchar_t *off, *name; int (*install)(void); volatile LONG *tripped; int state; } Fix;
+static Fix fixes[] = {
+    {L"nosleep",     L"Pak mount sleeps",       skip_pak_sleeps},
+    {L"noghost",     L"Not Responding fix",     disable_window_ghosting},
+    {L"noocclusion", L"Occlusion hash",         fix_occlusion_hash},
+    {L"nosurvey",    L"Hardware survey skip",   skip_survey},
+    {L"nopak",       L"Pak search skip",        install_pak_skip,        &pak_skip_disabled},
+    {L"noasset",     L"Item list checks",       install_asset_compare,   &asset_shortcut_disabled},
+    {L"nowaitfix",   L"Stuck join fix",         install_join_fix},
+    {L"noitem",      L"Building item lookups",  install_building_items,  &item_shortcut_disabled},
+    {L"nomodcache",  L"Mod folder lists",       install_folder_lists,    &folder_lists_disabled},
+    {L"noregcache",  L"Asset scan cache",       install_registry_cache},
+    {L"nomd5",       L"Mod checksum cache",     install_checksum_cache},
+    {L"noprehash",   L"Parallel mod hashing",   install_prehash,         &prehash_disabled},
+};
+#define FIX_COUNT (int)(sizeof fixes / sizeof fixes[0])
+
+/* Appends one "name: state" line per fix to out (length n so far); returns the new length. */
+int status_lines(wchar_t *out, int cap, int n) {
+    for (int i = 0; i < FIX_COUNT; i++) {
+        const Fix *f = &fixes[i];
+        const wchar_t *s = f->state == 0 ? L"Disabled" : f->state == 2 ? L"Failed to load"
+                         : f->tripped && *f->tripped ? L"Turned off by safety check" : L"Loaded";
+        n = wcs_append(out, cap, n, f->name); n = wcs_append(out, cap, n, L": ");
+        n = wcs_append(out, cap, n, s); n = wcs_append(out, cap, n, L"\n");
+    }
+    return n;
+}
+
 /* Applies every fix that isn't switched off. Runs once, from DllMain. */
 static void install_all(void) {
     wchar_t ini[MAX_PATH];
@@ -38,19 +69,11 @@ static void install_all(void) {
         read_server_slot(ini, server_slot, 64);
     }
     log_line("server for saved data: %ls\n", server_slot);
-    if (!switch_on(L"nosleep")) skip_pak_sleeps();
-    if (!switch_on(L"noghost")) disable_window_ghosting();
-    if (!switch_on(L"noocclusion")) fix_occlusion_hash();
-    if (!switch_on(L"nosurvey")) skip_survey();
     verify_every_skip = switch_on(L"fullcheck");
-    if (!switch_on(L"nopak")) install_pak_skip();
-    if (!switch_on(L"noasset")) install_asset_compare();
-    if (!switch_on(L"nowaitfix")) install_join_fix();
-    if (!switch_on(L"noitem")) install_building_items();
-    if (!switch_on(L"nomodcache")) install_folder_lists();
-    if (!switch_on(L"noregcache")) install_registry_cache();
     if (switch_on(L"loadlog")) install_load_log();
-    if (!switch_on(L"nomd5")) install_checksum_cache();
+    for (int i = 0; i < FIX_COUNT; i++)
+        if (!switch_on(fixes[i].off)) { int r = fixes[i].install(); fixes[i].state = r < 0 ? 0 : r ? 1 : 2; }
+    if (!switch_on(L"nomenu")) install_menu_status();
 }
 
 /* Sets up the file paths and installs the fixes, but only inside ConanSandbox.exe. */

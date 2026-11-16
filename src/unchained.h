@@ -24,6 +24,7 @@ void *hook_function(unsigned char *target, int prologue, void *dst);
 void patch_bytes(unsigned char *p, const void *bytes, int n);
 unsigned long long fnv1a(const void *p, size_t n, unsigned long long h);
 unsigned long long file_fingerprint(const wchar_t *path, unsigned long long size, unsigned long long mtime);
+int wcs_append(wchar_t *out, int cap, int n, const wchar_t *s);
 void keep_newest(const wchar_t *dir, const wchar_t *pattern, int keep);
 #define MOD_LISTS_KEPT 5   // per-server caches kept on disk (folder lists, asset registry)
 void read_server_slot(const wchar_t *ini, wchar_t *out, int n);
@@ -37,16 +38,25 @@ extern PathEquals_t game_path_equals;
 // checksums.c
 unsigned long long checksums_fingerprint(void);
 
-// One install function per fix.
-void install_checksum_cache(void);
-void skip_survey(void);
-void skip_pak_sleeps(void);
-void disable_window_ghosting(void);
-void fix_occlusion_hash(void);
-void install_pak_skip(void);
-void install_asset_compare(void);
-void install_join_fix(void);
-void install_building_items(void);
-void install_folder_lists(void);
-void install_registry_cache(void);
+// One install function per fix; each returns 1 if it is in place, 0 if it couldn't be applied.
+int install_checksum_cache(void);
+int install_prehash(void);
+int skip_survey(void);
+int skip_pak_sleeps(void);
+int disable_window_ghosting(void);
+int fix_occlusion_hash(void);
+int install_pak_skip(void);
+int install_asset_compare(void);
+int install_join_fix(void);
+int install_building_items(void);
+int install_folder_lists(void);
+int install_registry_cache(void);
+int install_menu_status(void);
 void install_load_log(void);
+
+// Set by a fix's safety check when it switches itself off for the session (shown in the menu).
+extern volatile LONG pak_skip_disabled, asset_shortcut_disabled, item_shortcut_disabled, folder_lists_disabled, prehash_disabled;
+
+// main.c: one "name: state" line per fix; menu_status.c: those lines plus the game's text.
+int status_lines(wchar_t *out, int cap, int n);
+int menu_text(wchar_t *out, int cap, const wchar_t *game);

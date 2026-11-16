@@ -49,8 +49,10 @@ static char wait_hook(void *pc, const wchar_t *label) {
 }
 
 /* Hooks the streaming wait function. */
-void install_join_fix(void) {
+int install_join_fix(void) {
     unsigned char *p = find_signature(WAIT_SIG, sizeof WAIT_SIG / sizeof WAIT_SIG[0], WAIT_RVA);
-    if (!p) { log_line("stuck join fix: signature not found\n"); return; }
-    if ((original_wait = (Wait_t)hook_function(p, 15, (void *)wait_hook))) log_line("stuck join fix installed\n");
+    if (!p) { log_line("stuck join fix: signature not found\n"); return 0; }
+    if (!(original_wait = (Wait_t)hook_function(p, 15, (void *)wait_hook))) return 0;
+    log_line("stuck join fix installed\n");
+    return 1;
 }

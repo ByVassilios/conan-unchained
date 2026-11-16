@@ -14,7 +14,7 @@ typedef void (*ArrGrow_t)(FStringArray *arr, int oldNum);
 typedef void (*StrResize_t)(FString *s, int newMax, int oldMax);
 static ListFiles_t original_list_files; static ArrResize_t game_array_reserve; static ArrGrow_t game_array_grow; static StrResize_t game_string_resize;
 typedef struct { wchar_t *key; int n; wchar_t **files; } FolderList;
-static FolderList *folder_lists; static int folder_list_count, folder_lists_loaded, folder_lists_disabled; static unsigned long long folder_lists_fingerprint;
+static FolderList *folder_lists; static int folder_list_count, folder_lists_loaded; volatile LONG folder_lists_disabled; static unsigned long long folder_lists_fingerprint;
 static wchar_t folder_lists_path[MAX_PATH], folder_lists_dir[MAX_PATH]; static DWORD folder_lists_thread; static volatile LONG64 folder_list_hits, folder_list_misses;
 static void *allowed_callers[3]; static int allowed_caller_count;   // allowed return addresses (the test leaves none = any)
 #define LISTFILES_RVA 0x212D200
@@ -166,16 +166,18 @@ static void list_files_hook(void *self, const FStringArray *paths, char force, F
 }
 
 /* Hooks the folder listing after checking the function and all three call sites. */
-void install_folder_lists(void) {
+int install_folder_lists(void) {
     unsigned char *base = (unsigned char *)GetModuleHandleW(NULL);
     static const unsigned char call[] = {0x41,0xff,0x92,0xe0,0x00,0x00,0x00};   // call [r10+0xE0] right before each return address
     if (memcmp(base + LISTFILES_RVA, LISTFILES_SIG, sizeof LISTFILES_SIG) || memcmp(base + LISTFILES_RET - 7, call, sizeof call) ||
         memcmp(base + LISTMODS_RET - 7, call, sizeof call) || memcmp(base + LISTDLC_RET - 7, call, sizeof call)) {
-        log_line("mod file list cache: game build differs - left off.\n"); return;
+        log_line("mod file list cache: game build differs - left off.\n"); return 0;
     }
     game_array_reserve = (ArrResize_t)(base + ARRRESIZE_RVA); game_array_grow = (ArrGrow_t)(base + ARRGROW_RVA); game_string_resize = (StrResize_t)(base + STRRESIZE_RVA);
     allowed_callers[0] = base + LISTFILES_RET; allowed_callers[1] = base + LISTMODS_RET; allowed_callers[2] = base + LISTDLC_RET; allowed_caller_count = 3;
     folder_lists_thread = GetCurrentThreadId();   // DllMain runs on the game's main thread
     wcscpy(folder_lists_dir, data_dir);
-    if ((original_list_files = (ListFiles_t)hook_function(base + LISTFILES_RVA, 19, (void *)list_files_hook))) log_line("mod file list cache installed\n");
+    if (!(original_list_files = (ListFiles_t)hook_function(base + LISTFILES_RVA, 19, (void *)list_files_hook))) return 0;
+    log_line("mod file list cache installed\n");
+    return 1;
 }

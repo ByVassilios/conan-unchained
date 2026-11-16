@@ -26,7 +26,7 @@ static const short FIND_SIG[] = {
 static unsigned long long *empty_set; static size_t empty_set_capacity, empty_set_count;
 static SRWLOCK empty_set_lock = SRWLOCK_INIT;
 static volatile LONG64 pak_search_calls, pak_search_skipped, empty_folders_known;
-static volatile LONG pak_skip_disabled; 
+volatile LONG pak_skip_disabled; 
 int verify_every_skip;   // unchained\fullcheck: re-check every skip (slow, for testing)
 
 /* Hash that identifies one mounted pak: its address, index size and mount point. */
@@ -207,18 +207,19 @@ static void *folder_scan_hook(void *a, void *b, void *c, void *d) {
 }
 
 /* Hooks FindFilesAtPath, the mod controller search and the asset folder scan. */
-void install_pak_skip(void) {
+int install_pak_skip(void) {
     unsigned char *p = find_signature(FIND_SIG, sizeof FIND_SIG / sizeof FIND_SIG[0], FIND_RVA);
-    if (!p) { log_line("pak search signature not found - left unpatched.\n"); return; }
+    if (!p) { log_line("pak search signature not found - left unpatched.\n"); return 0; }
     original_find_files = (FindFiles_t)hook_function(p, 14, (void *)find_files_hook);
-    if (!original_find_files) return;
+    if (!original_find_files) return 0;
     unsigned char *s = find_signature(MODSEARCH_SIG, sizeof MODSEARCH_SIG / sizeof MODSEARCH_SIG[0], MODSEARCH_RVA);
     if (!s || !(original_mod_search = (ModSearch_t)hook_function(s, 19, (void *)mod_search_hook))) {
-        log_line("mod controller search signature not found - pak search skip stays off.\n"); return;
+        log_line("mod controller search signature not found - pak search skip stays off.\n"); return 0;
     }
     log_line("pak search skip installed at rva 0x%llX (mod search 0x%llX)\n", (unsigned long long)(p - (unsigned char *)GetModuleHandleW(NULL)),
           (unsigned long long)(s - (unsigned char *)GetModuleHandleW(NULL)));
     unsigned char *sc = (unsigned char *)GetModuleHandleW(NULL) + SCAN_RVA;
-    if (memcmp(sc, SCAN_SIG, sizeof SCAN_SIG)) { log_line("asset scan: game build differs - pak search skip stays limited to the mod search.\n"); return; }
+    if (memcmp(sc, SCAN_SIG, sizeof SCAN_SIG)) { log_line("asset scan: game build differs - pak search skip stays limited to the mod search.\n"); return 1; }
     if ((original_folder_scan = (Scan_t)hook_function(sc, 19, (void *)folder_scan_hook))) log_line("pak search skip also covers asset folder scans\n");
+    return 1;
 }

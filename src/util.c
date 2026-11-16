@@ -52,6 +52,13 @@ void patch_bytes(unsigned char *p, const void *bytes, int n) {
     FlushInstructionCache(GetCurrentProcess(), p, n);
 }
 
+/* Copies s to out[n...], cut off to fit cap (terminator included); returns the new length. */
+int wcs_append(wchar_t *out, int cap, int n, const wchar_t *s) {
+    while (*s && n < cap - 1) out[n++] = *s++;
+    if (n < cap) out[n] = 0;
+    return n;
+}
+
 /* FNV-1a, continued from h. */
 unsigned long long fnv1a(const void *p, size_t n, unsigned long long h) {
     for (size_t i = 0; i < n; i++) h = (h ^ ((const unsigned char *)p)[i]) * 0x100000001b3ull;

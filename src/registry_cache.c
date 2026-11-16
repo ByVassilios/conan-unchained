@@ -96,14 +96,14 @@ static int swap_registry_cache(const wchar_t *dir, const wchar_t *store, unsigne
 #define REGCACHE_RVA 0x213AD73
 static const unsigned char REGCACHE_SIG[] = {0x83,0x78,0x50,0x00, 0x0f,0x8c,0xe1,0x03,0x00,0x00};   // cmp [rax+50h],0; jl skip
 /* Swaps in this mod list's asset scan cache, then lets the gatherer store cooked packages. */
-void install_registry_cache(void) {
+int install_registry_cache(void) {
     unsigned char *p = (unsigned char *)GetModuleHandleW(NULL) + REGCACHE_RVA;
-    if (memcmp(p, REGCACHE_SIG, sizeof REGCACHE_SIG)) { log_line("asset registry cache: game build differs - left off.\n"); return; }
+    if (memcmp(p, REGCACHE_SIG, sizeof REGCACHE_SIG)) { log_line("asset registry cache: game build differs - left off.\n"); return 0; }
     wchar_t game[MAX_PATH], dir[MAX_PATH * 2];
-    if (!GetModuleFileNameW(NULL, game, MAX_PATH)) return;
+    if (!GetModuleFileNameW(NULL, game, MAX_PATH)) return 0;
     for (int up = 0; up < 3; up++) { wchar_t *sl = wcsrchr(game, L'\\'); if (sl) *sl = 0; }   // ...\ConanSandbox
     unsigned long long fp = all_paks_fingerprint(game);
-    if (!fp) { log_line("asset registry cache: no paks found - left off.\n"); return; }
+    if (!fp) { log_line("asset registry cache: no paks found - left off.\n"); return 0; }
     swprintf(dir, MAX_PATH * 2, L"%ls\\Intermediate\\AssetRegistryCache", game);
     wchar_t store[MAX_PATH * 2]; swprintf(store, MAX_PATH * 2, L"%ls\\asset-cache", data_dir);   // parked sets; label in asset-cache.txt
     int swapped = swap_registry_cache(dir, store, fp, server_slot);
@@ -111,9 +111,10 @@ void install_registry_cache(void) {
     if (swapped == 2) log_line("asset registry cache: new server or its mods changed - starting a fresh cache for %ls\n", server_slot);
     static const unsigned char nop6[] = {0x66,0x0f,0x1f,0x44,0x00,0x00};
     DWORD old;
-    if (!VirtualProtect(p + 4, 6, PAGE_EXECUTE_READWRITE, &old)) return;
+    if (!VirtualProtect(p + 4, 6, PAGE_EXECUTE_READWRITE, &old)) return 0;
     memcpy(p + 4, nop6, 6);
     VirtualProtect(p + 4, 6, old, &old);
     FlushInstructionCache(GetCurrentProcess(), p, 10);
     log_line("asset registry cache: cooked packages are cached\n");
+    return 1;
 }
